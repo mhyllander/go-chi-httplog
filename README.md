@@ -1,11 +1,13 @@
-httplog
-=======
+go-chi-httplog
+==============
+
+> Fork of github.com/go-chi/httplog to fix various issues.
 
 Small but powerful structured logging package for HTTP request logging built
 on the Go 1.21+ stdlib `slog` package.
 
 ```
-go get -u github.com/go-chi/httplog/v2
+go get -u github.com/mhyllander/go-chi-httplog/v2
 ```
 
 ## Example
@@ -20,7 +22,7 @@ import (
   "net/http"
   "github.com/go-chi/chi/v5"
   "github.com/go-chi/chi/v5/middleware"
-  "github.com/go-chi/httplog/v2"
+  "github.com/mhyllander/go-chi-httplog/v2"
 )
 
 func main() {
