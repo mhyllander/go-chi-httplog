@@ -95,8 +95,7 @@ type Options struct {
 	ReplaceAttrsOverride func(groups []string, a slog.Attr) slog.Attr
 }
 
-// Configure will set new options for the httplog instance and behaviour
-// of underlying slog pkg and its global logger.
+// Configure will create a new slog.Logger with options for the httplog instance.
 func (l *Logger) Configure(opts Options) {
 	// if opts.LogLevel is not set
 	// it would be 0 which is LevelInfo
@@ -166,9 +165,9 @@ func (l *Logger) Configure(opts Options) {
 	}
 
 	if !opts.JSON {
-		slog.SetDefault(slog.New(NewPrettyHandler(writer, handlerOpts)))
+		l.Logger = slog.New(slog.NewTextHandler(writer, handlerOpts))
 	} else {
-		slog.SetDefault(slog.New(slog.NewJSONHandler(writer, handlerOpts)))
+		l.Logger = slog.New(slog.NewJSONHandler(writer, handlerOpts))
 	}
 }
 
