@@ -90,11 +90,19 @@ func Handler(logger *Logger, optSkipPaths ...[]string) func(next http.Handler) h
 
 			t1 := time.Now()
 			defer func() {
-				var respBody []byte
-				if ww.Status() >= 400 {
-					respBody, _ = io.ReadAll(buf)
+				// Check if connection is a websocket (hijacked). There's no simple way to check this except to try to
+				// write to the connection, which will return an error http.ErrHijacked if the connection has been
+				// grabbed by a (websocket) handler. Also note that we are checking the original ResponseWriter, because
+				// WrapResponseWriter will try to write a header and log an INFO about writing to a hijacked connection.
+				_, err := ww.Unwrap().Write(nil)
+				if err != http.ErrHijacked {
+
+					var respBody []byte
+					if ww.Status() >= 400 {
+						respBody, _ = io.ReadAll(buf)
+					}
+					entry.Write(ww.Status(), ww.BytesWritten(), ww.Header(), time.Since(t1), respBody)
 				}
-				entry.Write(ww.Status(), ww.BytesWritten(), ww.Header(), time.Since(t1), respBody)
 			}()
 
 			next.ServeHTTP(ww, middleware.WithLogEntry(r, entry))
