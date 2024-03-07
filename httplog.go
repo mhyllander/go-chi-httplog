@@ -22,13 +22,15 @@ type Logger struct {
 
 func NewLogger(serviceName string, options ...Options) *Logger {
 	logger := &Logger{}
+
 	if len(options) > 0 {
 		logger.Configure(options[0])
 	} else {
 		logger.Configure(defaultOptions)
 	}
+	slogger := logger.Logger
 
-	slogger := slog.With(slog.Attr{Key: "service", Value: slog.StringValue(serviceName)})
+	slogger = slogger.With(slog.Attr{Key: "service", Value: slog.StringValue(serviceName)})
 
 	if !logger.Options.Concise && len(logger.Options.Tags) > 0 {
 		group := []any{}
@@ -55,7 +57,7 @@ func RequestLogger(logger *Logger, skipPaths ...[]string) func(next http.Handler
 }
 
 func Handler(logger *Logger, optSkipPaths ...[]string) func(next http.Handler) http.Handler {
-	var f middleware.LogFormatter = &requestLogger{*logger.Logger, logger.Options}
+	var f middleware.LogFormatter = &requestLogger{logger.Logger, logger.Options}
 
 	skipPaths := map[string]struct{}{}
 	if len(optSkipPaths) > 0 {
@@ -88,11 +90,19 @@ func Handler(logger *Logger, optSkipPaths ...[]string) func(next http.Handler) h
 
 			t1 := time.Now()
 			defer func() {
-				var respBody []byte
-				if ww.Status() >= 400 {
-					respBody, _ = io.ReadAll(buf)
+				// Check if connection is a websocket (hijacked). There's no simple way to check this except to try to
+				// write to the connection, which will return an error http.ErrHijacked if the connection has been
+				// grabbed by a (websocket) handler. Also note that we are checking the original ResponseWriter, because
+				// WrapResponseWriter will try to write a header and log an INFO about writing to a hijacked connection.
+				_, err := ww.Unwrap().Write(nil)
+				if err != http.ErrHijacked {
+
+					var respBody []byte
+					if ww.Status() >= 400 {
+						respBody, _ = io.ReadAll(buf)
+					}
+					entry.Write(ww.Status(), ww.BytesWritten(), ww.Header(), time.Since(t1), respBody)
 				}
-				entry.Write(ww.Status(), ww.BytesWritten(), ww.Header(), time.Since(t1), respBody)
 			}()
 
 			next.ServeHTTP(ww, middleware.WithLogEntry(r, entry))
@@ -102,7 +112,7 @@ func Handler(logger *Logger, optSkipPaths ...[]string) func(next http.Handler) h
 }
 
 type requestLogger struct {
-	Logger  slog.Logger
+	Logger  *slog.Logger
 	Options Options
 }
 
@@ -111,9 +121,9 @@ func (l *requestLogger) NewLogEntry(r *http.Request) middleware.LogEntry {
 	msg := fmt.Sprintf("Request: %s %s", r.Method, r.URL.Path)
 
 	if l.Options.RequestHeaders {
-		entry.Logger = *l.Logger.With(requestLogFields(r, l.Options, true))
+		entry.Logger = l.Logger.With(requestLogFields(r, l.Options, true))
 	} else {
-		entry.Logger = *l.Logger.With(requestLogFields(r, l.Options, false))
+		entry.Logger = l.Logger.With(requestLogFields(r, l.Options, false))
 	}
 
 	if !l.Options.Concise {
@@ -123,7 +133,7 @@ func (l *requestLogger) NewLogEntry(r *http.Request) middleware.LogEntry {
 }
 
 type RequestLoggerEntry struct {
-	Logger  slog.Logger
+	Logger  *slog.Logger
 	Options Options
 	msg     string
 }
@@ -160,7 +170,7 @@ func (l *RequestLoggerEntry) Panic(v interface{}, stack []byte) {
 	if l.Options.JSON {
 		stacktrace = string(stack)
 	}
-	l.Logger = *l.Logger.With(
+	l.Logger = l.Logger.With(
 		slog.Attr{
 			Key:   "stacktrace",
 			Value: slog.StringValue(stacktrace)},
@@ -328,7 +338,7 @@ func ErrAttr(err error) slog.Attr {
 // passes through the handler chain, which at any point can be logged
 // with a call to .Print(), .Info(), etc.
 
-func LogEntry(ctx context.Context) slog.Logger {
+func LogEntry(ctx context.Context) *slog.Logger {
 	entry, ok := ctx.Value(middleware.LogEntryCtxKey).(*RequestLoggerEntry)
 	if !ok || entry == nil {
 		handlerOpts := &slog.HandlerOptions{
@@ -338,7 +348,7 @@ func LogEntry(ctx context.Context) slog.Logger {
 			Level: slog.LevelError + 1,
 			// ReplaceAttr: func(attr slog.Attr) slog.Attr ,
 		}
-		return *slog.New(slog.NewTextHandler(os.Stdout, handlerOpts))
+		return slog.New(slog.NewTextHandler(os.Stdout, handlerOpts))
 	} else {
 		return entry.Logger
 	}
@@ -346,18 +356,18 @@ func LogEntry(ctx context.Context) slog.Logger {
 
 func LogEntrySetField(ctx context.Context, key string, value slog.Value) {
 	if entry, ok := ctx.Value(middleware.LogEntryCtxKey).(*RequestLoggerEntry); ok {
-		entry.Logger = *entry.Logger.With(slog.Attr{Key: key, Value: value})
+		entry.Logger = entry.Logger.With(slog.Attr{Key: key, Value: value})
 	}
 }
 
 func LogEntrySetFields(ctx context.Context, fields map[string]interface{}) {
 	if entry, ok := ctx.Value(middleware.LogEntryCtxKey).(*RequestLoggerEntry); ok {
-		attrs := make([]slog.Attr, len(fields))
+		attrs := make([]any, len(fields))
 		i := 0
 		for k, v := range fields {
 			attrs[i] = slog.Attr{Key: k, Value: slog.AnyValue(v)}
 			i++
 		}
-		entry.Logger = *entry.Logger.With(attrs)
+		entry.Logger = entry.Logger.With(attrs...)
 	}
 }
