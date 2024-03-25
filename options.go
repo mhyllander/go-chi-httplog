@@ -29,7 +29,8 @@ type Options struct {
 	// LogLevel defines the minimum level of severity that app should log.
 	// Must be one of:
 	// slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError
-	LogLevel slog.Level
+	// (or e.g. a *slog.LevelVar)
+	LogLevel slog.Leveler
 
 	// LevelFieldName sets the field name for the log level or severity.
 	// Some providers parse and search for different field names.
