@@ -22,7 +22,7 @@ import (
   "net/http"
   "github.com/go-chi/chi/v5"
   "github.com/go-chi/chi/v5/middleware"
-  "github.com/mhyllander/go-chi-httplog/v2"
+  httplog "github.com/mhyllander/go-chi-httplog/v2"
 )
 
 func main() {
